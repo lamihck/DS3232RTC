@@ -266,6 +266,48 @@ void DS3232RTC::setAlarm(ALARM_TYPES_t alarmType, byte seconds, byte minutes, by
     writeRTC(addr++, daydate);
 }
 
+/*----------------------------------------------------------------------*
+ * Reads the current alarm time for alarm from the RTC and returns it   *
+ * in a tmElements_t * structure tm and an ALARM_TYPES_t variable       *
+ * alarmType. I am afraid that tmElements_t is somehow abused...        *
+ *----------------------------------------------------------------------*/
+byte DS3232RTC::readAlarm(int alarm, tmElements_t &tm)
+{
+  byte s=0, m,h,d, aType;
+  if (alarm == ALARM_1) {
+    aType = 0x00;
+    i2cBeginTransmission(RTC_ADDR);
+    i2cWrite((uint8_t)ALM1_SECONDS);
+    if ( byte e = i2cEndTransmission() ) return e;    
+    //request 4 bytes (secs, min, hr, dow)
+    i2cRequestFrom(RTC_ADDR, 4);
+    s = i2cRead();
+  } else {
+    aType = 0x80;
+    i2cBeginTransmission(RTC_ADDR);
+    i2cWrite((uint8_t)ALM2_MINUTES);      
+    if ( byte e = i2cEndTransmission() ) return e;    
+    i2cRequestFrom(RTC_ADDR, 3);
+  }
+  m = i2cRead();
+  h = i2cRead();
+  d = i2cRead();
+  // Decode alarm type
+  aType |= (s & _BV(7)) ? 0x01 : 0;    
+  aType |= (m & _BV(7)) ? 0x02 : 0;
+  aType |= (h & _BV(7)) ? 0x04 : 0;
+  aType |= (d & _BV(7)) ? 0x08 : 0;
+  // set time / day / date values
+  tm.Second = bcd2dec(s & 0x7f);
+  tm.Minute = bcd2dec(m & 0x7f);
+  tm.Hour = bcd2dec(h & 0x7f);    //  assumes 24hr clock
+  tm.Wday = (d & _BV(DYDT)) ? 0 : bcd2dec(d & 0x3f);
+  tm.Day = (d & _BV(DYDT)) ? bcd2dec(d & 0x3f) : 0;
+  tm.Month = 0;
+  tm.Year = 0;
+  return 0;
+} 
+
 // Set an alarm time. Sets the alarm registers only. To cause the
 // INT pin to be asserted on alarm match, use alarmInterrupt().
 // This method can set either Alarm 1 or Alarm 2, depending on the
